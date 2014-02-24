@@ -1,0 +1,29 @@
+# -*- mode: cperl -*-
+
+requires 'perl', '5.008005';
+
+requires 'Net::Pcap';
+requires 'Net::Pcap::Reassemble';
+requires 'NetPacket::Ethernet';
+requires 'NetPacket::IP';
+requires 'NetPacket::TCP';
+requires 'Data::Validator';
+requires 'File::Temp';
+requires 'Getopt::Long';
+requires 'List::Util';
+requires 'Pod::Usage';
+
+on configure => sub {
+    requires 'Module::Build::Tiny', '0.030';
+};
+
+on test => sub {
+    requires 'Test::More', '0.88';
+    requires 'Devel::Cover';
+
+    requires 'Pod::Wordlist';
+    requires 'Test::Fixme';
+    requires 'Test::Kwalitee';
+    requires 'Test::Spelling', '0.12';
+};
+

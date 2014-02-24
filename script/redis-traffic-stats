@@ -1,0 +1,644 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use 5.008_005;
+
+our $VERSION = '1.000';
+
+use Getopt::Long qw(:config posix_default no_ignore_case no_ignore_case_always);
+use Pod::Usage;
+use IO::File;
+STDOUT->autoflush(1);
+STDERR->autoflush(1);
+use Data::Dumper;
+$Data::Dumper::Indent    = 1;
+$Data::Dumper::Deepcopy  = 1;
+$Data::Dumper::Sortkeys  = 1;
+$Data::Dumper::Terse     = 1;
+$Data::Dumper::Useqq     = 1;
+$Data::Dumper::Quotekeys = 0;
+BEGIN {
+    sub p($) { ## no critic
+        my $d = Dumper($_[0]);
+        # $d =~ s/\\x{([0-9a-z]+)}/chr(hex($1))/ge;
+        print STDERR $d;
+    }
+}
+
+use Net::Pcap;
+use Net::Pcap::Reassemble;
+use NetPacket::Ethernet;
+use NetPacket::IP;
+use NetPacket::TCP;
+use Data::Validator;
+use List::Util qw(max);
+use POSIX qw(strftime);
+use File::Temp qw(tempfile);
+
+my $Debug = 0;
+
+sub debug {
+    return unless $Debug;
+    my @m = @_;
+    chomp @m;
+    warn '[DEBUG] '.join(" ", @m);
+}
+
+MAIN: {
+    my %arg;
+    GetOptions(
+        \%arg,
+        'port|p=i',
+        'pcapfile|r=s',
+        'top|n=i',
+        'device|i=s',
+        'count|c=i',
+        'time|t=i',
+        'debug|d+' => \$Debug,
+        'help|h|?' => sub { pod2usage(-verbose=>1) },
+    ) or pod2usage();
+
+    my $opt_rule = Data::Validator->new(
+        port     => { isa => 'Int', default => 6379 },
+        pcapfile => { isa => 'Str', optional => 1 },
+        top      => { isa => 'Int', default => 10 },
+        device   => { isa => 'Str', optional => 1 },
+        count    => { isa => 'Int', default => 10000 },
+        time     => { isa => 'Int', optional => 1 },
+    )->with('NoThrow');
+    my $opt = $opt_rule->validate(%arg);
+    pod2usage(join("\n", map {$_->{message}} @{$opt_rule->clear_errors}))
+        if $opt_rule->has_errors;
+
+    debug("opt: ".Dumper($opt));
+    debug("port: $opt->{port}");
+
+    my $pcapfile;
+    if (exists $opt->{pcapfile}) {
+        $pcapfile = $opt->{pcapfile};
+    } else {
+        progressln("capture packet by tcpdump");
+        (undef, $pcapfile) = tempfile(UNLINK => 1);
+        my $pid = fork || do {
+            my @cmd = ('tcpdump', '-s', 65535, 'tcp', 'port', $opt->{port}, '-w', $pcapfile,);
+            if (exists $opt->{device}) {
+                push @cmd, '-i', $opt->{device};
+            }
+            if (exists $opt->{time}) {
+                progressln("  Capture packets until after $opt->{time} sec or interrupted by ^C");
+            } else {
+                push @cmd, '-c', $opt->{count};
+                progressln("  Capture packets until received $opt->{count} packets or interrupted by ^C");
+            }
+            progressln("  ".join(" ", @cmd));
+
+            exec {$cmd[0]} @cmd;
+        };
+        local $SIG{INT} = sub {
+            kill 'TERM', $pid,
+        };
+        if (exists $opt->{time}) {
+            sleep $opt->{time};
+            kill 'TERM', $pid;
+        }
+        my $r = waitpid $pid, 0;
+        if ($r < 0 || $? != 0) {
+            die "tcpdump exit with ".($?>>8);
+        }
+    }
+    progressln("pcapfile: $pcapfile");
+    my $err;
+    my $pcap = Net::Pcap::open_offline($pcapfile, \$err)
+        or die "open_offline: $err";
+
+    my $filter;
+    pcap_compile($pcap, \$filter, "tcp port $opt->{port}", 1, 0);
+    pcap_setfilter($pcap, $filter);
+
+    progress("read pcap data and rebuild TCP stream ");
+    my $stream = {};
+    my $count = 0;
+    Net::Pcap::Reassemble::loop($pcap, -1, \&process_packet, {
+        port   => $opt->{port},
+        stream => $stream,
+        count  => \$count,
+    });
+    progressln(" done ($count pkt)");
+
+    progress("process Redis protocol ");
+    my $stats = process_redis($stream);
+    progressln(" done");
+    debug("stats: ".Dumper($stats));
+
+    format_stats($opt->{top}, $stream, $stats);
+
+    exit 0;
+}
+
+sub progress {
+    my @m = @_;
+    chomp @m;
+    print STDERR @m;
+}
+
+sub progressln {
+    progress(@_);
+    print STDERR "\n";
+}
+
+sub process_packet {
+    my($opt, $header, $packet) = @_;
+    my $port   = $opt->{port};
+    my $stream = $opt->{stream};
+    ${$opt->{count}}++;
+
+    progress(".") if ${$opt->{count}}%1000 == 0;
+
+    my $eth = NetPacket::Ethernet->decode($packet);
+    if ($eth->{type} != NetPacket::Ethernet::ETH_TYPE_IP) {
+        warn("Not a IP ethernet frame: $eth->{type}");
+        return;
+    }
+
+    my $ip = NetPacket::IP->decode($eth->{data});
+    if ($ip->{proto} != NetPacket::IP::IP_PROTO_TCP) {
+        warn("Not a TCP packet: $ip->{proto}");
+        return;
+    }
+
+    my $tcp = NetPacket::TCP->decode($ip->{data});
+
+    if ($tcp->{flags} & SYN && !($tcp->{flags} & ACK)) {
+        my $next_seqnum = $tcp->{seqnum} + 1;
+        $stream->{ $next_seqnum } = {
+            start => [ $header->{tv_sec}, $header->{tv_usec} ],
+            end   => [ 0, 0 ],
+            state => 'syn',
+            data  => { req => [], res => [] },
+        };
+    } elsif ($tcp->{flags} & SYN && $tcp->{flags} & ACK) {
+        if (exists $stream->{ $tcp->{acknum} }) {
+            $stream->{ $tcp->{acknum} }{state} = 'syn+ack';
+        } else {
+            debug("Got syn+ack but no syn packet");
+        }
+    } elsif ($tcp->{flags} & ACK && length($tcp->{data}) > 0) {
+        if (exists $stream->{ $tcp->{seqnum} }) {
+            # client -> server
+            my $next_seqnum = $tcp->{seqnum} + length($tcp->{data});
+            $stream->{ $next_seqnum } = delete $stream->{ $tcp->{seqnum} };
+            $stream->{ $next_seqnum }{state} = 'ack';
+            push @{ $stream->{ $next_seqnum }{data}{req} }, $tcp->{data};
+        } elsif (exists $stream->{ $tcp->{acknum} }) {
+            # server -> client
+            my $next_seqnum = $tcp->{acknum};
+            $stream->{ $next_seqnum } = delete $stream->{ $tcp->{acknum} };
+            $stream->{ $next_seqnum }{state} = 'ack';
+            push @{ $stream->{ $next_seqnum }{data}{res} }, $tcp->{data};
+        } else {
+            debug("Got ack but no syn+ack packet");
+        }
+    } elsif ($tcp->{flags} & ACK && $tcp->{flags} & FIN) {
+        if (exists $stream->{ $tcp->{seqnum} }) {
+            my $next_seqnum = $tcp->{seqnum} + 1;
+            $stream->{ $next_seqnum } = delete $stream->{ $tcp->{seqnum} };
+            $stream->{ $next_seqnum }{state} = 'fin1';
+        } elsif (exists $stream->{ $tcp->{acknum} }) {
+            my $next_seqnum = $tcp->{acknum};
+            $stream->{ $next_seqnum }{state} = 'fin2';
+        } else {
+            debug("Got unknown FIN packet");
+        }
+    } elsif ($tcp->{flags} & ACK && length($tcp->{data}) == 0) {
+        if (exists $stream->{ $tcp->{seqnum} }) {
+            my $next_seqnum = $tcp->{seqnum};
+            $stream->{ $next_seqnum }{state} = 'closed';
+            $stream->{ $next_seqnum }{end} = [ $header->{tv_sec}, $header->{tv_usec} ];
+        } else {
+            ; # no problem multiple ack
+        }
+    }
+}
+
+sub process_redis {
+    my($stream) = @_;
+
+    my %stats = (
+        start => 1<<31,
+        end   => 0,
+        total_req => 0,
+    );
+    my @slow = ({ time => 0, cmd => "dummy" });
+
+    for my $tcp (values %$stream) {
+        my @req = split(/\r\n/, join('', @{ $tcp->{data}{req} }));
+        my @res = split(/\r\n/, join('', @{ $tcp->{data}{res} }));
+        if ($Debug >= 2) {
+            debug("tcp: ".Dumper($tcp));
+            debug("req: ".Dumper(\@req));
+            debug("res: ".Dumper(\@res));
+        }
+
+        $stats{start} = $tcp->{start}[0] if $tcp->{start}[0] < $stats{start};
+        $stats{end}   = $tcp->{end}[0]   if $tcp->{end}[0]   > $stats{end};
+
+        while (@req) {
+            my($line, $type, $data);
+            my %cmd = ( req => [], res => "" );
+
+            ### parse request
+            my @req_data;
+            if ($req[0] =~ /^[a-zA-Z]/) {
+                # inline command
+                @req_data = split /\s+/, shift @req;
+            } else {
+                @req_data = _parse_RESP(\@req)
+            }
+            if (@req_data) {
+                # uppercase command name
+                $req_data[0] = uc $req_data[0];
+                push @{ $cmd{req} }, @req_data;
+            } else {
+                warn("Cannot parse request");
+                last;
+            }
+
+            ### parse response
+            next unless $res[0]; # maybe broken packet
+            if (my @res_data = _parse_RESP(\@res)) {
+                $cmd{res} .= join '', @res_data;
+            }
+
+            ### statistics
+            $stats{total_req}++;
+            $stats{reqsec}{ $tcp->{start}[0] }++;
+            my $cmd = $cmd{req}[0];
+            $stats{cmd}{$cmd}{count}++;
+            $stats{cmd}{$cmd}{bytes} += length( $cmd{res} );
+            if ($cmd{req}[1]) {
+                my $key = $cmd{req}[1];
+                $stats{cmd}{$cmd}{key}{$key}{count}++;
+                $stats{cmd}{$cmd}{key}{$key}{bytes} += length( $cmd{res} );
+            }
+
+            my $worst_n_slow = 20;
+            my $elapsed = ($tcp->{end}[0]+$tcp->{end}[1]/1000000)
+                        - ($tcp->{start}[0]+$tcp->{start}[1]/1000000);
+            if ($elapsed > $slow[-1]{time}) {
+                my @s = sort { $b->{time} <=> $a->{time} }
+                    @slow,
+                        {
+                            time => $elapsed,
+                            cmd  => join(" ", @{ $cmd{req} }),
+                        };
+                @slow = splice(@s, 0, $worst_n_slow);
+            }
+
+            progress(".") if $stats{total_req}%500 == 0;
+        }
+        if (@res) {
+            warn("remain responce: ".join("\n", @res));
+        }
+    }
+
+    pop @slow if $slow[-1]{cmd} eq 'dummy';
+    $stats{slow} = \@slow;
+
+    return \%stats;
+}
+
+sub _read_line {
+    return (substr($_[0],0,1), substr($_[0],1));
+}
+
+# http://redis.io/topics/protocol
+sub _parse_RESP {
+    my($lines) = @_;
+    my @data;
+
+    my $line = shift @$lines;
+    my ($type, $data) = _read_line($line);
+
+    if ($type eq '$') {
+        if ($data > 0) {
+            push @data, shift @$lines;
+        } else {
+            ; # $0 (empty string) or $-1 (no data)
+        }
+    } elsif ($type eq '+') { # simple string
+        push @data, $data;
+    } elsif ($type eq '-') { # error
+        push @data,  $data;
+    } elsif ($type eq ':') { # integer
+        push @data,  $data;
+    } elsif ($type eq '*') { # array
+        my $nelm = $data;
+        for (my $i=0; $i<$nelm; $i++) {
+            if (my @data2 = _parse_RESP($lines)) {
+                push @data, @data2;
+            }
+        }
+
+    } else {
+        warn("Cannot parse: $line");
+    }
+
+    return @data;
+}
+
+sub format_stats {
+    my($top_n, $stream, $stats) = @_;
+
+    my $count = 0;
+    my @width;
+
+    my $duration = $stats->{end} - $stats->{start};
+    $duration = 1 if $duration <= 0;
+
+    my $total_traffic = 0;
+    for my $s (values %{ $stats->{cmd} }) {
+        $total_traffic += $s->{bytes} if $s->{bytes};
+    }
+
+    my $fmt;
+
+    $fmt = <<'EOR';
+
+# redis-traffic-stats
+
+## Summary
+
+* Duration:
+    * %s - %s (%ds)
+* Total Traffic:
+    * %d bytes (%.2f bytes/sec)
+* Total Requests:
+    * %d requests (Avg %.2f req/sec, Peak %.2f req/sec)
+
+EOR
+    printf($fmt,
+           strftime("%Y-%m-%d %H:%M:%S", localtime( $stats->{start} )),
+           strftime("%Y-%m-%d %H:%M:%S", localtime( $stats->{end} )),
+           $duration,
+
+           $total_traffic,
+           $total_traffic/$duration,
+
+           $stats->{total_req},
+           $stats->{total_req}/$duration,
+           (max values %{ $stats->{reqsec} }),
+       );
+
+    print "## Top Commands\n\n";
+
+    print "### By count\n";
+    @width = (16, 6, 6, 8);
+    printf("%-*s | %-*s | %-*s | %-*s\n",
+           $width[0], "Command",
+           $width[1], "Count",
+           $width[2], "Pct",
+           $width[3], "Req/sec",
+       );
+    print table_separator(\@width, [qw(L R R R)]);
+
+    $count = 0;
+    for my $cmd (sort { $stats->{cmd}{$b}{count} <=> $stats->{cmd}{$a}{count} }
+                     keys %{ $stats->{cmd} }) {
+        my $s = $stats->{cmd}{$cmd};
+        printf("%-*s | %*d | %*.2f | %*.2f\n",
+               $width[0], $cmd,
+               $width[1], $s->{count},
+               $width[2], $s->{count}/$stats->{total_req}*100,
+               $width[3], $s->{count}/$duration,
+           );
+        last if ++$count >= $top_n;
+    }
+    print "\n";
+
+    print "### By traffic\n";
+    @width = (16, 9, 12);
+    printf("%-*s | %-*s | %-*s\n",
+           $width[0], "Command",
+           $width[1], "Bytes",
+           $width[2], "Byte/sec",
+       );
+    print table_separator(\@width, [qw(L R R)]);
+
+    $count = 0;
+    for my $cmd (sort { $stats->{cmd}{$b}{bytes} <=> $stats->{cmd}{$a}{bytes} }
+                     keys %{ $stats->{cmd} }) {
+        my $s = $stats->{cmd}{$cmd};
+        printf("%-*s | %*d | %*.2f\n",
+               $width[0], $cmd,
+               $width[1], $s->{bytes},
+               $width[2], $s->{bytes}/$duration,
+           );
+        last if ++$count >= $top_n;
+    }
+    print "\n";
+
+    print "## Command Detail\n\n";
+
+    my $keylen = 0;
+    for my $cmd (values %{ $stats->{cmd} }) {
+        for my $key (keys %{ $cmd->{key} }) {
+            my $l = length $key;
+            $keylen = $l if $l > $keylen;
+        }
+    }
+
+    for my $cmd (sort { $stats->{cmd}{$b}{bytes} <=> $stats->{cmd}{$a}{bytes} }
+                     keys %{ $stats->{cmd} }) {
+        print "### $cmd\n";
+        @width = ($keylen, 9, 12, 6, 6, 8);
+        printf("%-*s | %-*s | %-*s | %-*s | %-*s | %-*s\n",
+               $width[0], "Key",
+               $width[1], "Bytes",
+               $width[2], "Byte/sec",
+               $width[3], "Count",
+               $width[4], "Pct",
+               $width[5], "Req/sec",
+           );
+        print table_separator(\@width, [qw(L R R R R R)]);
+
+        $count = 0;
+        for my $key (sort { $stats->{cmd}{$cmd}{key}{$b}{bytes} <=> $stats->{cmd}{$cmd}{key}{$a}{bytes} }
+                         keys %{ $stats->{cmd}{$cmd}{key} }) {
+            my $s = $stats->{cmd}{$cmd}{key}{$key};
+            printf("%-*s | %*d | %*.2f | %*d | %*.2f | %*.2f\n",
+                   $width[0], $key,
+                   $width[1], $s->{bytes},
+                   $width[2], $s->{bytes}/$duration,
+                   $width[3], $s->{count},
+                   $width[4], $s->{count}/$stats->{cmd}{$cmd}{count}*100,
+                   $width[5], $s->{count}/$duration,
+               );
+            last if ++$count >= $top_n;
+        }
+        print "\n";
+    }
+
+    print "## Slow Commands\n\n";
+
+    @width = (6, 70);
+    printf("%-*s | %-*s\n",
+           $width[0], "Time",
+           $width[1], "Command",
+       );
+    print table_separator(\@width, [qw(R L)]);
+
+    for my $s (@{ $stats->{slow} }) {
+        printf("%*.3f | %-*s\n",
+               $width[0], $s->{time},
+               $width[1], trim(escape_nonprintable($s->{cmd})),
+           );
+    }
+
+    print "\n";
+}
+
+sub table_separator {
+    my($width, $align) = @_;
+    my $separator = "";
+
+    my $ncol = scalar(@$width);
+    for (my $i=0; $i<$ncol; $i++) {
+        if ($i == 0) {
+            $separator .= '-'x($width->[$i]) . ($align->[$i] eq 'R' ? ':' : '-');
+        } else {
+            $separator .= '|' . '-'x($width->[$i]+1) . ($align->[$i] eq 'R' ? ':' : '-');
+        }
+    }
+
+    return $separator."\n";
+}
+
+sub escape_nonprintable {
+    my $s = shift;
+    $s =~ s/([^[:print:]])/sprintf('\x{%02X}', ord($1))/eg;
+    return $s;
+}
+
+sub trim {
+    my $s = shift;
+    my $len = 70;
+    if (length $s > $len) {
+        return substr($s,0,$len).'...';
+    } else {
+        return $s;
+    }
+}
+
+__END__
+
+=head1 NAME
+
+B<redis-traffic-stats> - Redis query analyzer for counting, traffic stats by command
+
+=head1 SYNOPSIS
+
+B<redis-traffic-stats> -r pcapfile [-n top_n] [-p port]
+
+A) Analyze existing pcap file (RECOMMENDED WAY)
+
+    # tcpdump -s 65535 tcp port 6379 -w redis.pcap -i eth0
+    (wait for a while and stop by ^C)
+    $ redis-traffic-stats -r redis.pcap
+
+B<redis-traffic-stats> [-n top_n] [-p port] [-i device] [-c count_capture] [-t time_capture]
+
+B) Capture packets on demand and analyze it
+
+    Capture 5000 packets
+    # redis-traffic-stats -i eth0 -c 5000
+    
+    Capture for 10 sec
+    # redis-traffic-stats -i eth0 -t 10
+
+B<redis-traffic-stats> B<-h> | B<--help> | B<-?>
+
+Show detailed usage
+
+=head1 DESCRIPTION
+
+redis-traffic-stats is a query analyzer for Redis.
+
+The output looks as follows:
+
+=over 4
+
+=item Total network traffic and average of bytes/sec
+
+=item Total number of requests and average and peak of req/sec
+
+=item Top commands of count, percentage, req/sec by count
+
+=item Top commands of network traffic and byte/sec by amount of traffic
+
+=item Top keys for each command show bytes, byte/sec, count, percentage, req/sec
+
+=item Worst slow requests
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-r> pcapfile:Str, B<--pcapfile> pcapfile:Str
+
+Read existing pcap file instead of on demand packet capturing.
+
+    # tcpdump -s 65535 tcp port 6379 -w redis.pcap -i eth0
+
+=item B<-p> port:Int, B<--port> port:Int
+
+Target port of analyze. Default is 6379.
+
+=item B<-n> top_n:Int, B<--top> top_n:Int
+
+Show top N keys in "Command Detail" section. Default is 10.
+
+=item B<-i> device:Str, B<--device> device:Str
+
+Network interface name used by -i option of tcpdump. Default is no -i option (lowest numbered interface excluding loopback device).
+
+This option has a point only in on demand packet capture mode.
+
+=item B<-c> count:Int, B<--count> count:Int
+
+tcpdump will exit after captured number of this option packets. Default is 10000.
+
+=item B<-t> time:Int, B<--time> time:Int
+
+tcpdump will exit after number of this option seconds.
+
+=item B<-d>, B<--debug>
+
+increase debug level.
+-d -d more verbosely.
+
+=back
+
+=head1 SEE ALSO
+
+L<https://github.com/hirose31/redis-traffic-stats>
+
+=head1 AUTHOR
+
+HIROSE Masaaki E<lt>hirose31@gmail.comE<gt>
+
+=cut
+
+# for Emacsen
+# Local Variables:
+# mode: cperl
+# cperl-indent-level: 4
+# cperl-close-paren-offset: -4
+# cperl-indent-parens-as-block: t
+# indent-tabs-mode: nil
+# coding: utf-8
+# End:
+
+# vi: set ts=4 sw=4 sts=0 et ft=perl fenc=utf-8 :

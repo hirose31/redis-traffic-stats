@@ -1,0 +1,72 @@
+{
+   "abstract" : "Redis query analyzer for counting, traffic stats by command",
+   "author" : [
+      "HIROSE Masaaki <hirose31@gmail.com>"
+   ],
+   "dynamic_config" : 0,
+   "generated_by" : "Dist::Milla version v1.0.4, Dist::Zilla version 4.300039, CPAN::Meta::Converter version 2.133380",
+   "license" : [
+      "perl_5"
+   ],
+   "meta-spec" : {
+      "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
+      "version" : "2"
+   },
+   "name" : "App-redis_traffic_stats",
+   "no_index" : {
+      "directory" : [
+         "t",
+         "xt",
+         "inc",
+         "share",
+         "eg",
+         "examples"
+      ]
+   },
+   "prereqs" : {
+      "configure" : {
+         "requires" : {
+            "Module::Build::Tiny" : "0.030"
+         }
+      },
+      "runtime" : {
+         "requires" : {
+            "Data::Validator" : "0",
+            "File::Temp" : "0",
+            "Getopt::Long" : "0",
+            "List::Util" : "0",
+            "Net::Pcap" : "0",
+            "Net::Pcap::Reassemble" : "0",
+            "NetPacket::Ethernet" : "0",
+            "NetPacket::IP" : "0",
+            "NetPacket::TCP" : "0",
+            "Pod::Usage" : "0",
+            "perl" : "5.008005"
+         }
+      },
+      "test" : {
+         "requires" : {
+            "Devel::Cover" : "0",
+            "Pod::Wordlist" : "0",
+            "Test::Fixme" : "0",
+            "Test::Kwalitee" : "0",
+            "Test::More" : "0.88",
+            "Test::Spelling" : "0.12"
+         }
+      }
+   },
+   "release_status" : "stable",
+   "resources" : {
+      "bugtracker" : {
+         "web" : "https://github.com/hirose31/redis-traffic-stats/issues"
+      },
+      "homepage" : "https://github.com/hirose31/redis-traffic-stats",
+      "repository" : {
+         "type" : "git",
+         "url" : "https://github.com/hirose31/redis-traffic-stats.git",
+         "web" : "https://github.com/hirose31/redis-traffic-stats"
+      }
+   },
+   "version" : "1.000"
+}
+
