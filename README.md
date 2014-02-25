@@ -163,7 +163,8 @@ increase debug level. ```-d -d``` more verbosely.
 If you are on CentOS 6, you can try redis-traffic-stats downloading single binary file.
 
 ```
-curl -o redis-traffic-stats https://raw.github.com/hirose31/redis-traffic-stats/master/PAR/redis-traffic-stats.centos6
+curl -o redis-traffic-stats https://dl.dropboxusercontent.com/u/9824/redis-traffic-stats/centos6
+chmod +x redis-traffic-stats
 ```
 
 This binary file is just for trial. I __highly recommend__ to install following installation if you will use redis-traffic-stats on a daily basis.
