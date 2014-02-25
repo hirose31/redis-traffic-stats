@@ -31,7 +31,6 @@ use Net::Pcap::Reassemble;
 use NetPacket::Ethernet;
 use NetPacket::IP;
 use NetPacket::TCP;
-use Data::Validator;
 use List::Util qw(max);
 use POSIX qw(strftime);
 use File::Temp qw(tempfile);
@@ -46,9 +45,9 @@ sub debug {
 }
 
 MAIN: {
-    my %arg;
+    my $opt = {};
     GetOptions(
-        \%arg,
+        $opt,
         'port|p=i',
         'pcapfile|r=s',
         'top|n=i',
@@ -59,17 +58,9 @@ MAIN: {
         'help|h|?' => sub { pod2usage(-verbose=>1) },
     ) or pod2usage();
 
-    my $opt_rule = Data::Validator->new(
-        port     => { isa => 'Int', default => 6379 },
-        pcapfile => { isa => 'Str', optional => 1 },
-        top      => { isa => 'Int', default => 10 },
-        device   => { isa => 'Str', optional => 1 },
-        count    => { isa => 'Int', default => 10000 },
-        time     => { isa => 'Int', optional => 1 },
-    )->with('NoThrow');
-    my $opt = $opt_rule->validate(%arg);
-    pod2usage(join("\n", map {$_->{message}} @{$opt_rule->clear_errors}))
-        if $opt_rule->has_errors;
+    $opt->{port}  ||= 6379;
+    $opt->{top}   ||= 10;
+    $opt->{count} ||= 10000;
 
     debug("opt: ".Dumper($opt));
     debug("port: $opt->{port}");
