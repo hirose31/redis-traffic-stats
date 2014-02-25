@@ -158,13 +158,34 @@ increase debug level. ```-d -d``` more verbosely.
 
 ## INSTALLATION
 
-To install this module, run the following commands:
+### QUICK TRIAL for CentOS 6
 
-    perl Build.PL
-    ./Build
-    ./Build test
-    ./Build install
+If you are on CentOS 6, you can try redis-traffic-stats downloading single binary file.
+
+```
+curl -o redis-traffic-stats https://raw.github.com/hirose31/redis-traffic-stats/master/PAR/redis-traffic-stats.centos6
+```
+
+This binary file is just for trial. I __highly recommend__ to install following installation if you will use redis-traffic-stats on a daily basis.
 
 
-fixme on fatpack
+### RECOMMENDED INSTALLATION
 
+Install from CPAN using ```cpanm``` command:
+
+```
+cpanm App-redis_traffic_stats
+```
+> If you don't have ```cpanm```, please refer to <https://metacpan.org/pod/App::cpanminus#INSTALLATION>
+
+
+or clone this repository and install:
+
+```
+git clone https://github.com/hirose31/redis-traffic-stats.git
+cd redis-traffic-stats/
+perl Build.PL
+./Build
+./Build test
+./Build install
+```
