@@ -175,7 +175,7 @@ This binary file is just for trial. I __highly recommend__ to install following 
 Install from CPAN using ```cpanm``` command:
 
 ```
-cpanm App-redis_traffic_stats
+cpanm App::redis_traffic_stats
 ```
 > If you don't have ```cpanm```, please refer to <https://metacpan.org/pod/App::cpanminus#INSTALLATION>
 
