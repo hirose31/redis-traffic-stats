@@ -31,6 +31,7 @@
       },
       "develop" : {
          "requires" : {
+            "App::scan_prereqs_cpanfile" : "0.09",
             "Pod::Wordlist" : "0",
             "Test::Fixme" : "0",
             "Test::Kwalitee" : "0",
@@ -70,6 +71,6 @@
          "web" : "https://github.com/hirose31/redis-traffic-stats"
       }
    },
-   "version" : "1.000"
+   "version" : "1.001"
 }
 
