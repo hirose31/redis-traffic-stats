@@ -29,6 +29,14 @@
             "Module::Build::Tiny" : "0.030"
          }
       },
+      "develop" : {
+         "requires" : {
+            "Pod::Wordlist" : "0",
+            "Test::Fixme" : "0",
+            "Test::Kwalitee" : "0",
+            "Test::Spelling" : "0.12"
+         }
+      },
       "runtime" : {
          "requires" : {
             "Data::Validator" : "0",
@@ -46,12 +54,7 @@
       },
       "test" : {
          "requires" : {
-            "Devel::Cover" : "0",
-            "Pod::Wordlist" : "0",
-            "Test::Fixme" : "0",
-            "Test::Kwalitee" : "0",
-            "Test::More" : "0.88",
-            "Test::Spelling" : "0.12"
+            "Test::More" : "0.88"
          }
       }
    },
