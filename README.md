@@ -113,6 +113,7 @@ Example:
 (wait for a while and stop by ^C)
 $ redis-traffic-stats -r redis.pcap
 ```
+__NOTICE__: You __MUST NOT__ use ```-i any``` because Net::Pcap cannot parse that pcap data
 
 * Capture packets on demand and analyze it  
  ```redis-traffic-stats [-n top_n] [-p port] [-i device] [-c count_capture] [-t time_capture]```  
