@@ -178,7 +178,11 @@ Install from CPAN using ```cpanm``` command:
 ```
 cpanm App::redis_traffic_stats
 ```
-> If you don't have ```cpanm```, please refer to <https://metacpan.org/pod/App::cpanminus#INSTALLATION>
+If you don't have ```cpanm``` command:
+
+```
+curl -L http://cpanmin.us | perl - App::redis_traffic_stats
+```
 
 
 or clone this repository and install:
