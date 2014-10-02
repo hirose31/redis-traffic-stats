@@ -188,7 +188,14 @@ sub process_packet {
             $stream->{ $next_seqnum }{state} = 'ack';
             push @{ $stream->{ $next_seqnum }{data}{res} }, $tcp->{data};
         } else {
-            debug("Got ack but no syn+ack packet");
+            # client -> server already existing connection
+            my $next_seqnum = $tcp->{seqnum} + length($tcp->{data});
+            $stream->{ $next_seqnum } =  {
+                start => [ $header->{tv_sec}, $header->{tv_usec} ],
+                end   => [ 0, 0 ],
+                state => 'ack',
+                data  => { req => [$tcp->{data}], res => [] },
+            };
         }
     } elsif ($tcp->{flags} & ACK && $tcp->{flags} & FIN) {
         if (exists $stream->{ $tcp->{seqnum} }) {
