@@ -50,12 +50,17 @@
             "NetPacket::IP" : "0",
             "NetPacket::TCP" : "0",
             "Pod::Usage" : "0",
+            "Test::Fixme" : "0",
+            "Test::More" : "0",
             "perl" : "5.008005"
          }
       },
       "test" : {
          "requires" : {
-            "Test::More" : "0.88"
+            "Pod::Wordlist" : "0",
+            "Test::Kwalitee" : "0",
+            "Test::More" : "0.88",
+            "Test::Spelling" : "0.12"
          }
       }
    },
@@ -71,6 +76,10 @@
          "web" : "https://github.com/hirose31/redis-traffic-stats"
       }
    },
-   "version" : "1.001"
+   "version" : "1.001",
+   "x_contributors" : [
+      "Nick Tiligadas <tilign@users.noreply.github.com>",
+      "hirose31 <hirose31@gmail.com>"
+   ]
 }
 

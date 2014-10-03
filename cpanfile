@@ -13,6 +13,9 @@ requires 'Getopt::Long';
 requires 'List::Util';
 requires 'Pod::Usage';
 
+requires 'Test::Fixme';
+requires 'Test::More';
+
 on configure => sub {
     requires 'Module::Build::Tiny', '0.030';
 };
@@ -27,5 +30,7 @@ on develop => sub {
 
 on test => sub {
     requires 'Test::More', '0.88';
+    requires 'Pod::Wordlist';
+    requires 'Test::Kwalitee';
+    requires 'Test::Spelling', '0.12';
 };
-
