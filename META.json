@@ -76,7 +76,7 @@
          "web" : "https://github.com/hirose31/redis-traffic-stats"
       }
    },
-   "version" : "1.001",
+   "version" : "1.002",
    "x_contributors" : [
       "Nick Tiligadas <tilign@users.noreply.github.com>",
       "hirose31 <hirose31@gmail.com>"

@@ -1,6 +1,8 @@
 Revision history for App-redis_traffic_stats
 
 {{$NEXT}}
+    [IMPROVEMENTS]
+        - Collect stats for clients that were already connected when the capture starts (#1)
 
 1.001  2014-02-26 13:03:56 JST
     [PACKAGING]
