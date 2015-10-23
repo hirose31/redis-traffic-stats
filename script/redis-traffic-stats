@@ -27,7 +27,6 @@ BEGIN {
 }
 
 use Net::Pcap qw(:functions);
-use Net::Pcap::Reassemble;
 use NetPacket::Ethernet;
 use NetPacket::IP;
 use NetPacket::TCP;
@@ -110,7 +109,7 @@ MAIN: {
     progress("read pcap data and rebuild TCP stream ");
     my $stream = {};
     my $count = 0;
-    Net::Pcap::Reassemble::loop($pcap, -1, \&process_packet, {
+    Net::Pcap::loop($pcap, -1, \&process_packet, {
         port   => $opt->{port},
         stream => $stream,
         count  => \$count,
