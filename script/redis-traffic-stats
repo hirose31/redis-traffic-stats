@@ -26,7 +26,7 @@ BEGIN {
     }
 }
 
-use Net::Pcap;
+use Net::Pcap qw(:functions);
 use Net::Pcap::Reassemble;
 use NetPacket::Ethernet;
 use NetPacket::IP;
