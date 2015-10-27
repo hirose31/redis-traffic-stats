@@ -27,7 +27,6 @@ BEGIN {
 }
 
 use Net::Pcap;
-use Net::Pcap::Reassemble;
 use NetPacket::Ethernet;
 use NetPacket::IP;
 use NetPacket::TCP;
@@ -71,6 +70,7 @@ MAIN: {
     } else {
         progressln("capture packet by tcpdump");
         (undef, $pcapfile) = tempfile(UNLINK => 1);
+        # if $pid == 0, do child process; if $pid is undefined, fork failed. the do block in child process.
         my $pid = fork || do {
             my @cmd = ('tcpdump', '-s', 65535, 'tcp', 'port', $opt->{port}, '-w', $pcapfile,);
             if (exists $opt->{device}) {
@@ -87,6 +87,7 @@ MAIN: {
             exec {$cmd[0]} @cmd;
         };
         local $SIG{INT} = sub {
+            # child pid which > 0
             kill 'TERM', $pid,
         };
         if (exists $opt->{time}) {
@@ -110,7 +111,7 @@ MAIN: {
     progress("read pcap data and rebuild TCP stream ");
     my $stream = {};
     my $count = 0;
-    Net::Pcap::Reassemble::loop($pcap, -1, \&process_packet, {
+    Net::Pcap::loop($pcap, -1, \&process_packet, {
         port   => $opt->{port},
         stream => $stream,
         count  => \$count,
@@ -146,12 +147,14 @@ sub process_packet {
 
     progress(".") if ${$opt->{count}}%1000 == 0;
 
+    # ETH_TYPE_IP => 0x0800
     my $eth = NetPacket::Ethernet->decode($packet);
     if ($eth->{type} != NetPacket::Ethernet::ETH_TYPE_IP) {
         warn("Not a IP ethernet frame: $eth->{type}");
         return;
     }
 
+    # IP_PROTO_TCP  => 6
     my $ip = NetPacket::IP->decode($eth->{data});
     if ($ip->{proto} != NetPacket::IP::IP_PROTO_TCP) {
         warn("Not a TCP packet: $ip->{proto}");
@@ -160,6 +163,8 @@ sub process_packet {
 
     my $tcp = NetPacket::TCP->decode($ip->{data});
 
+    # FIN => 0x01; SYN => 0x02; ACK => 0x10;  NetPacket::TCP
+    # tcp 3 handshake
     if ($tcp->{flags} & SYN && !($tcp->{flags} & ACK)) {
         my $next_seqnum = $tcp->{seqnum} + 1;
         $stream->{ $next_seqnum } = {
@@ -342,6 +347,7 @@ sub _parse_RESP {
         warn("Cannot parse: $line");
     }
 
+    # such as: ("SELECT", "2")
     return @data;
 }
 
@@ -486,7 +492,7 @@ EOR
        );
     print table_separator(\@width, [qw(R L)]);
 
-    for my $s (@{ $stats->{slow} }) {
+    for my $s ( remove_dup_array(@{ $stats->{slow} }) ) {
         printf("%*.3f | %-*s\n",
                $width[0], $s->{time},
                $width[1], trim(escape_nonprintable($s->{cmd})),
@@ -494,6 +500,12 @@ EOR
     }
 
     print "\n";
+}
+
+# remove the duplicate value in array list.
+sub remove_dup_array {
+    my %count;
+    return grep { ++$count{join(',', %$_)} < 2 } @_;
 }
 
 sub table_separator {
