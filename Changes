@@ -1,6 +1,8 @@
 Revision history for App-redis_traffic_stats
 
 {{$NEXT}}
+
+1.004     2015-10-27 10:27:59+00:00 UTC
     [IMPROVEMENTS]
         - Reduce slow commands (#2 by @chenzhe07)
 
