@@ -3,7 +3,6 @@
 requires 'perl', '5.008005';
 
 requires 'Net::Pcap';
-requires 'Net::Pcap::Reassemble';
 requires 'NetPacket::Ethernet';
 requires 'NetPacket::IP';
 requires 'NetPacket::TCP';
@@ -17,7 +16,7 @@ requires 'Test::Fixme';
 requires 'Test::More';
 
 on configure => sub {
-    requires 'Module::Build::Tiny', '0.030';
+    requires 'Module::Build::Tiny', '0.039';
 };
 
 on develop => sub {
