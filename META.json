@@ -36,7 +36,11 @@
             "Pod::Wordlist" : "0",
             "Test::Fixme" : "0",
             "Test::Kwalitee" : "0",
-            "Test::Spelling" : "0.12"
+            "Test::Kwalitee::Extra" : "0",
+            "Test::More" : "0.96",
+            "Test::Pod" : "0",
+            "Test::Spelling" : "0.12",
+            "Test::Vars" : "0"
          }
       },
       "runtime" : {
@@ -51,17 +55,20 @@
             "NetPacket::TCP" : "0",
             "Pod::Usage" : "0",
             "Test::Fixme" : "0",
-            "Test::More" : "0.88",
+            "Test::More" : "0.96",
             "perl" : "5.008005"
          }
       },
       "test" : {
          "requires" : {
-            "Pod::Wordlist" : "0",
-            "Test::Kwalitee" : "0",
-            "Test::More" : "0.88",
-            "Test::Spelling" : "0.12"
+            "Test::More" : "0.96"
          }
+      }
+   },
+   "provides" : {
+      "App::redis_traffic_stats" : {
+         "file" : "lib/App/redis_traffic_stats.pm",
+         "version" : "1.004"
       }
    },
    "release_status" : "stable",
