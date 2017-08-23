@@ -53,6 +53,7 @@ MAIN: {
         'device|i=s',
         'count|c=i',
         'time|t=i',
+        'key-normalize-regexp|k=s',
         'debug|d+' => \$Debug,
         'help|h|?' => sub { pod2usage(-verbose=>1) },
     ) or pod2usage();
@@ -119,7 +120,7 @@ MAIN: {
     progressln(" done ($count pkt)");
 
     progress("process Redis protocol ");
-    my $stats = process_redis($stream);
+    my $stats = process_redis($stream, $opt->{"key-normalize-regexp"});
     progressln(" done");
     debug("stats: ".Dumper($stats));
 
@@ -225,7 +226,7 @@ sub process_packet {
 }
 
 sub process_redis {
-    my($stream) = @_;
+    my($stream, $normalize) = @_;
 
     my %stats = (
         start => 1<<31,
@@ -281,6 +282,7 @@ sub process_redis {
             $stats{cmd}{$cmd}{bytes} += length( $cmd{res} );
             if ($cmd{req}[1]) {
                 my $key = $cmd{req}[1];
+                $key =~ s{$normalize}{*}og if defined $normalize;
                 $stats{cmd}{$cmd}{key}{$key}{count}++;
                 $stats{cmd}{$cmd}{key}{$key}{bytes} += length( $cmd{res} );
             }

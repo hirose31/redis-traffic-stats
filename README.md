@@ -157,6 +157,9 @@ tcpdump will exit after number of this option seconds.
 * ```-d```, ```--debug```  
 increase debug level. ```-d -d``` more verbosely.
 
+* ```-k```, ```--key-normalize-regexp```
+Replace parts of key to '*' with regexp.
+
 ## INSTALLATION
 
 ### QUICK TRIAL for CentOS 6
