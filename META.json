@@ -68,7 +68,7 @@
    "provides" : {
       "App::redis_traffic_stats" : {
          "file" : "lib/App/redis_traffic_stats.pm",
-         "version" : "1.004"
+         "version" : "1.005"
       }
    },
    "release_status" : "stable",
@@ -83,7 +83,7 @@
          "web" : "https://github.com/hirose31/redis-traffic-stats"
       }
    },
-   "version" : "1.004",
+   "version" : "1.005",
    "x_contributors" : [
       "chenzhe07 <chenzhe07@gmail.com>",
       "FUJIWARA Shunichiro <fujiwara.shunichiro@gmail.com>",
