@@ -4,7 +4,7 @@
       "HIROSE Masaaki <hirose31@gmail.com>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Dist::Zilla version 5.035, Dist::Milla version v1.0.15, CPAN::Meta::Converter version 2.143240",
+   "generated_by" : "Dist::Milla version v1.0.17, Dist::Zilla version 6.009, CPAN::Meta::Converter version 2.143240",
    "license" : [
       "perl_5"
    ],
@@ -15,12 +15,12 @@
    "name" : "App-redis_traffic_stats",
    "no_index" : {
       "directory" : [
-         "t",
-         "xt",
+         "eg",
+         "examples",
          "inc",
          "share",
-         "eg",
-         "examples"
+         "t",
+         "xt"
       ]
    },
    "prereqs" : {
@@ -32,7 +32,7 @@
       "develop" : {
          "requires" : {
             "App::scan_prereqs_cpanfile" : "0.09",
-            "Dist::Milla" : "v1.0.15",
+            "Dist::Milla" : "v1.0.17",
             "Pod::Wordlist" : "0",
             "Test::Fixme" : "0",
             "Test::Kwalitee" : "0",
@@ -86,7 +86,9 @@
    "version" : "1.004",
    "x_contributors" : [
       "chenzhe07 <chenzhe07@gmail.com>",
+      "FUJIWARA Shunichiro <fujiwara.shunichiro@gmail.com>",
       "Nick Tiligadas <tilign@users.noreply.github.com>"
-   ]
+   ],
+   "x_serialization_backend" : "JSON::XS version 3.02"
 }
 
